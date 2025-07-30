@@ -1,105 +1,40 @@
-// src/services/socketService.js - Simple Socket Integration Service
-const logger = require('../utils/logger');
+// services/socketService.js
+const geoFencingService = require('./geofencingService');
+const { SOCKET_EVENTS } = require('../utils/constants');
+const { logger, logSocketConnection } = require('../utils/logger');
 
-class SocketService {
-  constructor() {
-    this.io = null;
-    this.connectedClients = new Set();
-    this.isInitialized = false;
-  }
+// In-memory client tracking
+const connectedClients = new Set();
 
-  initialize(server) {
-    try {
-      // Only initialize if socket.io is available
-      const socketIo = require('socket.io');
-      
-      this.io = socketIo(server, {
-        cors: {
-          origin: process.env.CORS_ORIGIN || "*",
-          methods: ["GET", "POST"]
-        }
-      });
+function setupSocketHandlers(io) {
+  io.on('connection', (socket) => {
+    logSocketConnection(socket.id, 'connected');
+    connectedClients.add(socket.id);
 
-      this.io.on('connection', (socket) => {
-        this.connectedClients.add(socket.id);
-        logger.info(`Socket client connected: ${socket.id}`);
-
-        socket.on('subscribe_bike', (bikeId) => {
-          socket.join(`bike_${bikeId}`);
-          logger.debug(`Client ${socket.id} subscribed to bike ${bikeId}`);
-        });
-
-        socket.on('unsubscribe_bike', (bikeId) => {
-          socket.leave(`bike_${bikeId}`);
-          logger.debug(`Client ${socket.id} unsubscribed from bike ${bikeId}`);
-        });
-
-        socket.on('disconnect', () => {
-          this.connectedClients.delete(socket.id);
-          logger.info(`Socket client disconnected: ${socket.id}`);
-        });
-      });
-
-      this.isInitialized = true;
-      logger.info('Socket service initialized successfully');
-    } catch (error) {
-      logger.warn('Socket.io not available, continuing without real-time features:', error.message);
-      this.isInitialized = false;
-    }
-  }
-
-  emitBikeDataUpdate(bikeId, data) {
-    if (this.io && this.isInitialized) {
+    // Handle client request for geofence status
+    socket.on(SOCKET_EVENTS.REQUEST_GEOFENCE_STATUS, async () => {
       try {
-        this.io.to(`bike_${bikeId}`).emit('bike_data_update', {
-          bikeId,
-          ...data
-        });
-        logger.debug(`Emitted bike data update for ${bikeId}`);
+        const stats = geoFencingService.getStatistics();
+        socket.emit(SOCKET_EVENTS.GEOFENCE_STATS, stats);
       } catch (error) {
-        logger.warn(`Failed to emit bike data update for ${bikeId}:`, error);
+        logger.error('Error sending geofence status via socket:', error);
       }
-    }
-  }
+    });
 
-  emitGeofenceViolation(bikeId, violationData) {
-    if (this.io && this.isInitialized) {
-      try {
-        this.io.to(`bike_${bikeId}`).emit('geofence_violation', {
-          bikeId,
-          ...violationData,
-          type: 'geofence_violation'
-        });
-        logger.info(`Emitted geofence violation for bike ${bikeId}`);
-      } catch (error) {
-        logger.warn(`Failed to emit geofence violation for ${bikeId}:`, error);
-      }
-    }
-  }
-
-  getConnectionStatus() {
-    return {
-      connected: this.io !== null && this.isInitialized,
-      clients: this.connectedClients.size,
-      initialized: this.isInitialized,
-      timestamp: new Date().toISOString()
-    };
-  }
-
-  // Fallback methods that work even without socket.io
-  broadcastSystemMessage(message) {
-    if (this.io && this.isInitialized) {
-      try {
-        this.io.emit('system_message', {
-          message,
-          timestamp: new Date().toISOString()
-        });
-        logger.info(`Broadcasted system message: ${message}`);
-      } catch (error) {
-        logger.warn('Failed to broadcast system message:', error);
-      }
-    }
-  }
+    // Handle disconnect
+    socket.on('disconnect', () => {
+      logSocketConnection(socket.id, 'disconnected');
+      connectedClients.delete(socket.id);
+    });
+  });
 }
 
-module.exports = new SocketService();
+// Utility to expose client count (used in /health)
+function getClientCount() {
+  return connectedClients.size;
+}
+
+module.exports = {
+  setupSocketHandlers,
+  getClientCount
+};

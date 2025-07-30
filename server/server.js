@@ -9,6 +9,9 @@ const { PORT, HOST, NODE_ENV, MQTT_BROKER, JWT_SECRET, CORS_ORIGIN } = require('
 
 (async () => {
   try {
+    // Initialize data directories & files
+   // await initializeDatabase();
+
     // Create HTTP server
     const server = http.createServer(app);
 

@@ -1,8 +1,5 @@
-// src/config/socket.js
 const { Server } = require('socket.io');
 const env = require('./environment');
-
-let ioInstance = null;
 
 // CORS options for Socket.IO
 const getCorsOptions = () => {
@@ -23,27 +20,20 @@ const getSocketConfig = () => {
   };
 };
 
-// Initialize and store the io instance
+// Initialize Socket.IO server
 const initializeSocket = (httpServer) => {
-  ioInstance = new Server(httpServer, getSocketConfig());
-
+  const io = new Server(httpServer, getSocketConfig());
+  
   console.log('🔌 Socket.IO server initialized with configuration:');
   console.log(`   CORS Origin: ${env.CORS_ORIGIN}`);
   console.log(`   Ping Timeout: ${env.SOCKET_PING_TIMEOUT}ms`);
   console.log(`   Ping Interval: ${env.SOCKET_PING_INTERVAL}ms`);
-
-  return ioInstance;
-};
-
-// Getter for other modules to access the io instance
-const getIO = () => {
-  if (!ioInstance) {
-    throw new Error('Socket.IO not initialized yet.');
-  }
-  return ioInstance;
+  
+  return io;
 };
 
 module.exports = {
-  initializeSocket,
-  getIO
+  getCorsOptions,
+  getSocketConfig,
+  initializeSocket
 };

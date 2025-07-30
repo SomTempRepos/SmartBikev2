@@ -1,5 +1,3 @@
-// src/utils/constants.js
-
 // HTTP Status Codes
 const HTTP_STATUS = {
   OK: 200,
@@ -40,35 +38,18 @@ const ALERT_TYPES = {
   CONNECTION_LOST: 'connection_lost'
 };
 
-// Socket Events (Enhanced with additional events for comprehensive functionality)
+// Socket Events
 const SOCKET_EVENTS = {
-  // Connection events
+  // Client to Server
   CONNECT: 'connection',
   DISCONNECT: 'disconnect',
+  REQUEST_GEOFENCE_STATUS: 'requestGeofenceStatus',
   
-  // Bike tracking events (from your existing code)
+  // Server to Client
   BIKE_DATA: 'bikeData',
   BIKE_UPDATE: 'bikeUpdate',
-  
-  // Geofencing events (from your existing + enhanced)
   GEOFENCE_ALERT: 'geofenceAlert',
-  GEOFENCE_STATS: 'geofenceStats',
-  
-  // Additional socket events for enhanced functionality
-  REQUEST_GEOFENCE_STATUS: 'requestGeofenceStatus',
-  UPDATE_GEOFENCE: 'updateGeoFence',
-  GEOFENCE_CONFIG_UPDATED: 'geoFenceConfigUpdated',
-  INITIAL_BIKE_DATA: 'initialBikeData',
-  GET_BIKES_FOR_SESSION: 'getBikesForSession',
-  SESSION_BIKES: 'sessionBikes',
-  
-  // System events
-  SYSTEM_MESSAGE: 'systemMessage',
-  ERROR: 'error',
-  
-  // Health check events
-  PING: 'ping',
-  PONG: 'pong'
+  GEOFENCE_STATS: 'geofenceStats'
 };
 
 // Default Values
@@ -90,12 +71,7 @@ const DEFAULTS = {
   
   // File Settings
   MAX_DAILY_LOG_SIZE: 10000,      // Maximum entries per daily log
-  BACKUP_RETENTION_DAYS: 30,
-  
-  // Socket specific defaults
-  SOCKET_TIMEOUT: 30000,          // 30 seconds
-  MAX_CONNECTIONS_PER_IP: 10,
-  RECONNECTION_ATTEMPTS: 3
+  BACKUP_RETENTION_DAYS: 30
 };
 
 // Validation Rules
@@ -108,7 +84,7 @@ const VALIDATION = {
   BIKE_ID_REGEX: /^[A-Z0-9]{3,10}$/
 };
 
-// Error Messages (Enhanced with socket-specific errors)
+// Error Messages
 const ERROR_MESSAGES = {
   // Authentication
   INVALID_CREDENTIALS: 'Invalid credentials',
@@ -135,15 +111,7 @@ const ERROR_MESSAGES = {
   // Server
   SERVER_ERROR: 'Internal server error',
   FILE_OPERATION_ERROR: 'File operation failed',
-  DATABASE_ERROR: 'Database operation failed',
-  
-  // Socket specific errors
-  SOCKET_CONNECTION_ERROR: 'Socket connection failed',
-  GEO_FENCE_CONFIG_ERROR: 'Geofence configuration error',
-  STATS_ERROR: 'Failed to retrieve statistics',
-  SESSION_BIKES_ERROR: 'Failed to retrieve bikes for session',
-  INITIAL_DATA_ERROR: 'Failed to load initial data',
-  CONNECTION_TIMEOUT: 'Connection timeout'
+  DATABASE_ERROR: 'Database operation failed'
 };
 
 // Success Messages
@@ -153,31 +121,7 @@ const SUCCESS_MESSAGES = {
   DATA_UPDATED: 'Data updated successfully',
   GEOFENCE_SET: 'Geofence set successfully',
   GEOFENCE_DISABLED: 'Geofence disabled successfully',
-  WARD_ADDED: 'Ward added successfully',
-  
-  // Socket specific success messages
-  SOCKET_CONNECTED: 'Socket connected successfully',
-  GEOFENCE_CONFIG_UPDATED: 'Geofence configuration updated successfully',
-  REAL_TIME_DATA_ENABLED: 'Real-time data updates enabled'
-};
-
-// Error Types for Socket Events
-const ERROR_TYPES = {
-  GEO_FENCE_CONFIG_ERROR: 'geo_fence_config_error',
-  STATS_ERROR: 'stats_error',
-  SESSION_BIKES_ERROR: 'session_bikes_error',
-  INITIAL_DATA_ERROR: 'initial_data_error',
-  CONNECTION_ERROR: 'connection_error',
-  AUTHENTICATION_ERROR: 'authentication_error',
-  VALIDATION_ERROR: 'validation_error'
-};
-
-// Message Types for System Messages
-const MESSAGE_TYPES = {
-  INFO: 'info',
-  WARNING: 'warning',
-  ERROR: 'error',
-  SUCCESS: 'success'
+  WARD_ADDED: 'Ward added successfully'
 };
 
 module.exports = {
@@ -190,7 +134,5 @@ module.exports = {
   DEFAULTS,
   VALIDATION,
   ERROR_MESSAGES,
-  SUCCESS_MESSAGES,
-  ERROR_TYPES,
-  MESSAGE_TYPES
+  SUCCESS_MESSAGES
 };

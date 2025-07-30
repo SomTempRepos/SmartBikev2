@@ -1,253 +1,146 @@
-// src/controllers/geofenceController.js
-const geoFencingService = require('../services/geofencingService');
-const logger = require('../utils/logger');
+// controllers/geofenceController.js
+const geoService = require('../services/geofencingService');
+const FileManager = require('../utils/fileManager');
+const { BIKES_FILE, GUARDIANS_FILE } = require('../config/database');
+const Helpers = require('../utils/helper');
 
-class GeofenceController {
-  
-  // Get all bikes with geo-fence status
-  async getBikes(req, res) {
-    try {
-      const bikes = geoFencingService.getBikes();
-      
-      res.json({
-        success: true,
-        data: {
-          bikes,
-          count: bikes.length,
-          timestamp: new Date().toISOString()
-        }
-      });
-
-      logger.info(`Retrieved ${bikes.length} bikes for geo-fence API`);
-    } catch (error) {
-      logger.error('Error fetching bikes for geo-fence:', error);
-      res.status(500).json({
-        success: false,
-        error: 'Failed to fetch bike data',
-        message: error.message
-      });
+const setGeofence = async (req, res) => {
+  try {
+    const { bikeId, baseLat, baseLng, radius } = req.body;
+    if (!bikeId || !baseLat || !baseLng || !radius) {
+      return res.status(400).json({ error: 'All fields required: bikeId, baseLat, baseLng, radius' });
     }
-  }
 
-  // Get geo-fence statistics
-  async getStats(req, res) {
-    try {
-      const stats = geoFencingService.getStats();
-      
-      res.json({
-        success: true,
-        data: stats
-      });
-
-      logger.info('Retrieved geo-fence statistics');
-    } catch (error) {
-      logger.error('Error fetching geo-fence stats:', error);
-      res.status(500).json({
-        success: false,
-        error: 'Failed to fetch geo-fence statistics',
-        message: error.message
-      });
+    const guardian = await getGuardianFromUserId(req.user.id);
+    const bike = await getBikeForGuardian(bikeId, guardian.guardianId);
+    if (!bike) {
+      return res.status(403).json({ error: 'Bike not found or unauthorized' });
     }
-  }
 
-  // Get all active sessions
-  async getSessions(req, res) {
-    try {
-      const sessions = geoFencingService.getAllSessions();
-      
-      res.json({
-        success: true,
-        data: {
-          sessions,
-          count: sessions.length,
-          timestamp: new Date().toISOString()
-        }
-      });
-
-      logger.info(`Retrieved ${sessions.length} active geo-fence sessions`);
-    } catch (error) {
-      logger.error('Error fetching geo-fence sessions:', error);
-      res.status(500).json({
-        success: false,
-        error: 'Failed to fetch session data',
-        message: error.message
-      });
+    const result = await geoService.setGeofence(bikeId, baseLat, baseLng, radius, guardian.guardianId);
+    if (!result.success) {
+      return res.status(500).json({ error: result.message });
     }
+
+    res.json({ message: 'Geofence set successfully', geofence: result.geofence });
+  } catch (err) {
+    res.status(500).json(Helpers.createErrorResponse(err));
   }
+};
 
-  // Get session-specific configuration
-  async getSessionConfig(req, res) {
-    try {
-      const { sessionId } = req.params;
-      
-      if (!sessionId) {
-        return res.status(400).json({
-          success: false,
-          error: 'Session ID is required'
-        });
-      }
-
-      const config = geoFencingService.getSessionConfig(sessionId);
-      
-      if (!config) {
-        return res.status(404).json({
-          success: false,
-          error: 'Session not found'
-        });
-      }
-
-      res.json({
-        success: true,
-        data: {
-          sessionId,
-          config,
-          timestamp: new Date().toISOString()
-        }
-      });
-
-      logger.info(`Retrieved config for session ${sessionId}`);
-    } catch (error) {
-      logger.error(`Error fetching session config for ${req.params.sessionId}:`, error);
-      res.status(500).json({
-        success: false,
-        error: 'Failed to fetch session configuration',
-        message: error.message
-      });
+const getGeofence = async (req, res) => {
+  try {
+    const { bikeId } = req.params;
+    const guardian = await getGuardianFromUserId(req.user.id);
+    const bike = await getBikeForGuardian(bikeId, guardian.guardianId);
+    if (!bike) {
+      return res.status(403).json({ error: 'Bike not found or unauthorized' });
     }
-  }
 
-  // Get bikes for a specific session
-  async getBikesForSession(req, res) {
-    try {
-      const { sessionId } = req.params;
-      
-      if (!sessionId) {
-        return res.status(400).json({
-          success: false,
-          error: 'Session ID is required'
-        });
-      }
-
-      const bikes = geoFencingService.getBikesForSession(sessionId);
-      
-      res.json({
-        success: true,
-        data: {
-          sessionId,
-          bikes,
-          count: bikes.length,
-          timestamp: new Date().toISOString()
-        }
-      });
-
-      logger.info(`Retrieved ${bikes.length} bikes for session ${sessionId}`);
-    } catch (error) {
-      logger.error(`Error fetching bikes for session ${req.params.sessionId}:`, error);
-      res.status(500).json({
-        success: false,
-        error: 'Failed to fetch bikes for session',
-        message: error.message
-      });
+    const geofence = geoService.getGeofence(bikeId);
+    if (!geofence) {
+      return res.status(404).json({ error: 'No geofence found for this bike' });
     }
+
+    res.json({ geofence });
+  } catch (err) {
+    res.status(500).json(Helpers.createErrorResponse(err));
   }
+};
 
-  // Test ESP32 connectivity
-  async testESP32Connection(req, res) {
-    try {
-      const { endpoint, bikeId = 'TEST_BIKE' } = req.body;
-      
-      if (!endpoint) {
-        return res.status(400).json({
-          success: false,
-          error: 'ESP32 endpoint is required'
-        });
-      }
+const getAllGeofences = async (req, res) => {
+  try {
+    const guardian = await getGuardianFromUserId(req.user.id);
+    const bikes = await FileManager.readJson(BIKES_FILE);
+    const guardianBikes = bikes.filter(b => b.guardianId === guardian.guardianId);
 
-      // Send test alert to ESP32
-      const result = await geoFencingService.sendAlertToESP32(bikeId, {
-        status: 'ok',
-        message: 'test connection',
-        distance: '0.00',
-        timestamp: new Date().toLocaleTimeString()
-      }, endpoint);
+    const geofences = guardianBikes
+      .map(bike => {
+        const geo = geoService.getGeofence(bike.bikeId);
+        return geo ? { ...geo, bikeName: bike.bikeName, wardName: bike.wardName } : null;
+      })
+      .filter(Boolean);
 
-      res.json({
-        success: result.success,
-        data: {
-          endpoint,
-          bikeId,
-          result,
-          timestamp: new Date().toISOString()
-        }
-      });
+    res.json({ geofences });
+  } catch (err) {
+    res.status(500).json(Helpers.createErrorResponse(err));
+  }
+};
 
-      logger.info(`ESP32 connection test completed for ${endpoint}`, result);
-    } catch (error) {
-      logger.error('Error testing ESP32 connection:', error);
-      res.status(500).json({
-        success: false,
-        error: 'Failed to test ESP32 connection',
-        message: error.message
-      });
+const disableGeofence = async (req, res) => {
+  try {
+    const { bikeId } = req.params;
+    const guardian = await getGuardianFromUserId(req.user.id);
+    const bike = await getBikeForGuardian(bikeId, guardian.guardianId);
+    if (!bike) {
+      return res.status(403).json({ error: 'Bike not found or unauthorized' });
     }
-  }
 
-  // Clean up inactive bikes
-  async cleanupInactiveBikes(req, res) {
-    try {
-      const { maxAgeMinutes = 30 } = req.query;
-      const removedCount = geoFencingService.cleanupInactiveBikes(parseInt(maxAgeMinutes));
-      
-      res.json({
-        success: true,
-        data: {
-          removedCount,
-          maxAgeMinutes: parseInt(maxAgeMinutes),
-          timestamp: new Date().toISOString()
-        }
-      });
-
-      logger.info(`Cleaned up ${removedCount} inactive bikes`);
-    } catch (error) {
-      logger.error('Error cleaning up inactive bikes:', error);
-      res.status(500).json({
-        success: false,
-        error: 'Failed to cleanup inactive bikes',
-        message: error.message
-      });
+    const success = await geoService.disableGeofence(bikeId);
+    if (!success) {
+      return res.status(404).json({ error: 'Geofence not found' });
     }
+
+    res.json({ message: 'Geofence disabled successfully' });
+  } catch (err) {
+    res.status(500).json(Helpers.createErrorResponse(err));
   }
+};
 
-  // Health check for geo-fencing service
-  async healthCheck(req, res) {
-    try {
-      const stats = geoFencingService.getStats();
-      const activeSessions = geoFencingService.getAllSessions();
-      
-      const health = {
-        status: 'healthy',
-        service: 'geo-fencing',
-        version: '1.0.0',
-        stats,
-        activeSessions: activeSessions.length,
-        timestamp: new Date().toISOString()
-      };
+const checkGeofenceStatus = async (req, res) => {
+  try {
+    const { bikeId } = req.params;
+    const bikes = await FileManager.readJson(BIKES_FILE);
+    const bike = bikes.find(b => b.bikeId === bikeId);
 
-      res.json({
-        success: true,
-        data: health
-      });
-
-      logger.debug('Geo-fencing health check completed');
-    } catch (error) {
-      logger.error('Error in geo-fencing health check:', error);
-      res.status(500).json({
-        success: false,
-        error: 'Geo-fencing service health check failed',
-        message: error.message
-      });
+    if (!bike || !bike.currentLocation) {
+      return res.status(404).json({ error: 'Bike not found or no location data available' });
     }
+
+    const result = await geoService.checkGeofence(
+      bikeId,
+      bike.currentLocation.lat,
+      bike.currentLocation.lng
+    );
+
+    res.json(result);
+  } catch (err) {
+    res.status(500).json(Helpers.createErrorResponse(err));
   }
+};
+
+const getGeofenceStats = async (req, res) => {
+  try {
+    const { bikeId } = req.params;
+    const stats = geoService.getStatistics(bikeId);
+    if (bikeId && !stats) {
+      return res.status(404).json({ error: 'No geofence statistics found for this bike' });
+    }
+
+    res.json({ statistics: stats });
+  } catch (err) {
+    res.status(500).json(Helpers.createErrorResponse(err));
+  }
+};
+
+// Helper: verify guardian and access
+async function getGuardianFromUserId(userId) {
+  const guardians = await FileManager.readJson(GUARDIANS_FILE);
+  const guardian = guardians.find(g => g.userId === userId);
+  if (!guardian) throw new Error('Guardian not found');
+  return guardian;
 }
 
-module.exports = new GeofenceController();
+async function getBikeForGuardian(bikeId, guardianId) {
+  const bikes = await FileManager.readJson(BIKES_FILE);
+  return bikes.find(b => b.bikeId === bikeId && b.guardianId === guardianId);
+}
+
+module.exports = {
+  setGeofence,
+  getGeofence,
+  getAllGeofences,
+  disableGeofence,
+  checkGeofenceStatus,
+  getGeofenceStats
+};

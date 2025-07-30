@@ -1,62 +1,18 @@
-// src/routes/bikeRoutes.js - Integrated Routes
+// src/routes/bikeRoutes.js
 const express = require('express');
 const router = express.Router();
 const bikeController = require('../controllers/bikeController');
 
-// Import middleware from separate files to avoid conflicts
-const { validateBikeData, validateESP32Connection } = require('../middleware/validation');
-const { rateLimitMiddleware } = require('../middleware/rateLimiting');
-const authMiddleware = require('../middleware/auth');
+// POST: Bike telemetry
+router.post('/data', bikeController.receiveBikeData);
 
-// GET Routes - Bike Data Retrieval
-router.get('/bikes', 
-  authMiddleware.optional, 
-  bikeController.getAllBikes
-);
+// GET: All bikes
+router.get('/', bikeController.getAllBikes);
 
-router.get('/bikes/:bikeId', 
-  authMiddleware.optional, 
-  bikeController.getBikeById
-);
+// GET: Specific bike
+router.get('/:bikeId', bikeController.getBikeById);
 
-router.get('/bikes/:bikeId/latest', 
-  authMiddleware.optional, 
-  bikeController.getLatestBikeData
-);
-
-router.get('/bikes/:bikeId/history', 
-  authMiddleware.optional, 
-  bikeController.getBikeHistory
-);
-
-router.get('/bikes/:bikeId/stats', 
-  authMiddleware.optional, 
-  bikeController.getBikeStats
-);
-
-// POST Routes - Data Processing
-router.post('/bikes/data', 
-  rateLimitMiddleware(100, 60), // 100 requests per minute for data ingestion
-  validateBikeData, 
-  bikeController.receiveBikeData
-);
-
-router.post('/bikes/bulk', 
-  authMiddleware.required, 
-  rateLimitMiddleware(10, 60), // Limited bulk operations
-  bikeController.bulkOperation
-);
-
-// ESP32 Integration Routes
-router.post('/bikes/esp32/test', 
-  authMiddleware.admin, 
-  validateESP32Connection, 
-  bikeController.testESP32Connection
-);
-
-// System Routes
-router.get('/bikes/system/health', 
-  bikeController.healthCheck
-);
+// GET: Latest data for a specific bike
+router.get('/:bikeId/latest', bikeController.getLatestBikeData);
 
 module.exports = router;
