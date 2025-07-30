@@ -1,0 +1,628 @@
+# Suggested File Structure
+
+## 1. types/index.ts - Type definitions
+```typescript
+export interface Location {
+  lat: number;
+  lng: number;
+}
+
+export interface BikeData {
+  location: Location;
+  avgSpeed: string;
+  battery: string;
+}
+
+export interface BikeUpdateData {
+  bikeId: string;
+  data: BikeData;
+  timestamp: string;
+}
+
+export interface Bike {
+  bikeId: string;
+  currentLocation: Location;
+  avgSpeed: number;
+  batteryLevel: number;
+  lastSeen: string;
+  status: string;
+  isOutsideFence: boolean;
+  distanceFromBase: number;
+}
+
+export interface Alert {
+  id: number;
+  bikeId: string;
+  type: 'fence_breach';
+  message: string;
+  distance: string;
+  timestamp: string;
+}
+
+export interface BikeApiResponse {
+  bikes: Bike[];
+}
+```
+
+## 2. utils/mapIcons.ts - Map icon configurations
+```typescript
+import { Icon } from 'leaflet';
+
+export const defaultIcon = new Icon({
+  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowSize: [41, 41]
+});
+
+export const bikeIconGreen = new Icon({
+  iconUrl: 'data:image/svg+xml;base64,' + btoa(`
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#10B981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="5.5" cy="17.5" r="3.5"/>
+      <circle cx="18.5" cy="17.5" r="3.5"/>
+      <path d="M15 6a1 1 0 1 0 0-2 1 1 0 0 0 0 2z"/>
+      <path d="M6 18h8l2-8h3l-2 8"/>
+      <path d="M6 18l-1-4h4l1 4"/>
+    </svg>
+  `),
+  iconSize: [32, 32],
+  iconAnchor: [16, 32],
+  popupAnchor: [0, -32],
+});
+
+export const bikeIconRed = new Icon({
+  iconUrl: 'data:image/svg+xml;base64,' + btoa(`
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#EF4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="5.5" cy="17.5" r="3.5"/>
+      <circle cx="18.5" cy="17.5" r="3.5"/>
+      <path d="M15 6a1 1 0 1 0 0-2 1 1 0 0 0 0 2z"/>
+      <path d="M6 18h8l2-8h3l-2 8"/>
+      <path d="M6 18l-1-4h4l1 4"/>
+    </svg>
+  `),
+  iconSize: [32, 32],
+  iconAnchor: [16, 32],
+  popupAnchor: [0, -32],
+});
+```
+
+## 3. utils/geoCalculations.ts - Geographic utility functions
+```typescript
+export function calculateDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371; // Earth's radius in kilometers
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = 
+    Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLng/2) * Math.sin(dLng/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return R * c; // Distance in kilometers
+}
+
+export function calculateCircleArea(radius: number): number {
+  return Math.PI * radius * radius;
+}
+```
+
+## 4. hooks/useSocket.ts - Socket connection hook
+```typescript
+import { useEffect, useRef, useState } from 'react';
+import { Socket, io } from 'socket.io-client';
+import { BikeUpdateData } from '../types';
+
+interface UseSocketProps {
+  enabled: boolean;
+  onBikeUpdate: (data: BikeUpdateData) => void;
+}
+
+export function useSocket({ enabled, onBikeUpdate }: UseSocketProps) {
+  const [isConnected, setIsConnected] = useState(false);
+  const [lastUpdate, setLastUpdate] = useState<string | null>(null);
+  const socketRef = useRef<Socket | null>(null);
+
+  useEffect(() => {
+    if (!enabled) return;
+    
+    const SERVER_URL = import.meta.env.VITE_SOCKET_SERVER_URL;
+    
+    socketRef.current = io(SERVER_URL, {
+      transports: ['websocket'],
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionAttempts: 5
+    });
+
+    socketRef.current.on('connect', () => {
+      console.log('Connected to server');
+      setIsConnected(true);
+    });
+
+    socketRef.current.on('disconnect', () => {
+      console.log('Disconnected from server');
+      setIsConnected(false);
+    });
+
+    socketRef.current.on('bikeUpdate', (data: BikeUpdateData) => {
+      console.log('Received bike update:', data);
+      setLastUpdate(new Date().toLocaleTimeString());
+      onBikeUpdate(data);
+    });
+
+    return () => {
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+      }
+    };
+  }, [enabled, onBikeUpdate]);
+
+  return { isConnected, lastUpdate };
+}
+```
+
+## 5. hooks/useBikeTracking.ts - Bike tracking logic hook
+```typescript
+import { useState, useCallback } from 'react';
+import { Bike, BikeUpdateData, Alert, Location, BikeApiResponse } from '../types';
+import { calculateDistance } from '../utils/geoCalculations';
+
+interface UseBikeTrackingProps {
+  baseLocation: Location;
+  radius: number;
+}
+
+export function useBikeTracking({ baseLocation, radius }: UseBikeTrackingProps) {
+  const [bikes, setBikes] = useState<Bike[]>([]);
+  const [alerts, setAlerts] = useState<Alert[]>([]);
+
+  const handleBikeUpdate = useCallback((data: BikeUpdateData) => {
+    setBikes(prevBikes => {
+      const existingBikeIndex = prevBikes.findIndex(bike => bike.bikeId === data.bikeId);
+      
+      const updatedBike: Bike = {
+        bikeId: data.bikeId,
+        currentLocation: data.data.location,
+        avgSpeed: parseFloat(data.data.avgSpeed),
+        batteryLevel: parseFloat(data.data.battery),
+        lastSeen: data.timestamp,
+        status: 'active',
+        isOutsideFence: false,
+        distanceFromBase: 0
+      };
+
+      if (data.data.location) {
+        const distance = calculateDistance(
+          baseLocation.lat,
+          baseLocation.lng,
+          data.data.location.lat,
+          data.data.location.lng
+        );
+        
+        updatedBike.isOutsideFence = distance > radius;
+        updatedBike.distanceFromBase = distance;
+
+        if (updatedBike.isOutsideFence) {
+          const existingBike = prevBikes.find(bike => bike.bikeId === data.bikeId);
+          if (!existingBike || !existingBike.isOutsideFence) {
+            const newAlert: Alert = {
+              id: Date.now(),
+              bikeId: data.bikeId,
+              type: 'fence_breach',
+              message: `Bike ${data.bikeId} has left the geo-fence area`,
+              distance: distance.toFixed(2),
+              timestamp: new Date().toLocaleTimeString()
+            };
+            setAlerts(prev => [newAlert, ...prev.slice(0, 4)]);
+          }
+        }
+      }
+
+      if (existingBikeIndex !== -1) {
+        const updatedBikes = [...prevBikes];
+        updatedBikes[existingBikeIndex] = updatedBike;
+        return updatedBikes;
+      } else {
+        return [...prevBikes, updatedBike];
+      }
+    });
+  }, [baseLocation, radius]);
+
+  const fetchBikes = async (): Promise<void> => {
+    try {
+      const response = await fetch('http://localhost:3001/api/bikes');
+      const data: BikeApiResponse = await response.json();
+      if (data.bikes) {
+        const processedBikes: Bike[] = data.bikes.map(bike => {
+          if (bike.currentLocation) {
+            const distance = calculateDistance(
+              baseLocation.lat,
+              baseLocation.lng,
+              bike.currentLocation.lat,
+              bike.currentLocation.lng
+            );
+            return {
+              ...bike,
+              isOutsideFence: distance > radius,
+              distanceFromBase: distance
+            };
+          }
+          return bike;
+        });
+        setBikes(processedBikes);
+      }
+    } catch (error) {
+      console.error('Error fetching bikes:', error);
+    }
+  };
+
+  const clearAlerts = () => setAlerts([]);
+  const resetBikes = () => setBikes([]);
+
+  return {
+    bikes,
+    alerts,
+    handleBikeUpdate,
+    fetchBikes,
+    clearAlerts,
+    resetBikes
+  };
+}
+```
+
+## 6. components/MapClickHandler.tsx - Map click handler component
+```typescript
+import { useMapEvents } from 'react-leaflet';
+import { LatLng } from 'leaflet';
+
+interface MapClickHandlerProps {
+  onMapClick: (latlng: LatLng) => void;
+}
+
+export function MapClickHandler({ onMapClick }: MapClickHandlerProps): null {
+  useMapEvents({
+    click: (e) => {
+      onMapClick(e.latlng);
+    },
+  });
+  return null;
+}
+```
+
+## 7. components/BikeMarker.tsx - Individual bike marker component
+```typescript
+import React from 'react';
+import { Marker, Popup } from 'react-leaflet';
+import { Bike } from '../types';
+import { bikeIconGreen, bikeIconRed } from '../utils/mapIcons';
+
+interface BikeMarkerProps {
+  bike: Bike;
+}
+
+export function BikeMarker({ bike }: BikeMarkerProps): JSX.Element | null {
+  if (!bike.currentLocation) return null;
+
+  return (
+    <Marker
+      position={[bike.currentLocation.lat, bike.currentLocation.lng]}
+      icon={bike.isOutsideFence ? bikeIconRed : bikeIconGreen}
+    >
+      <Popup>
+        <div className="p-2">
+          <h3 className="font-semibold">{bike.bikeId}</h3>
+          <p className="text-sm">Speed: {bike.avgSpeed ? `${bike.avgSpeed.toFixed(1)} km/h` : 'N/A'}</p>
+          <p className="text-sm">Battery: {bike.batteryLevel ? `${bike.batteryLevel.toFixed(0)}%` : 'N/A'}</p>
+          <p className="text-sm">Distance from base: {bike.distanceFromBase ? `${bike.distanceFromBase.toFixed(2)} km` : 'N/A'}</p>
+          <p className={`text-sm font-medium ${bike.isOutsideFence ? 'text-red-600' : 'text-green-600'}`}>
+            Status: {bike.isOutsideFence ? 'Outside Fence' : 'Inside Fence'}
+          </p>
+          {bike.lastSeen && (
+            <p className="text-xs text-gray-500">
+              Last seen: {new Date(bike.lastSeen).toLocaleTimeString()}
+            </p>
+          )}
+        </div>
+      </Popup>
+    </Marker>
+  );
+}
+```
+
+## 8. components/ControlPanel.tsx - Controls component
+```typescript
+import React from 'react';
+
+interface ControlPanelProps {
+  radius: number;
+  onRadiusChange: (value: number) => void;
+  trackingEnabled: boolean;
+  onToggleTracking: () => void;
+  onRefresh: () => void;
+  isConnected: boolean;
+  lastUpdate: string | null;
+}
+
+export function ControlPanel({
+  radius,
+  onRadiusChange,
+  trackingEnabled,
+  onToggleTracking,
+  onRefresh,
+  isConnected,
+  lastUpdate
+}: ControlPanelProps): JSX.Element {
+  return (
+    <div className="mb-6 space-y-4">
+      <div className="flex items-center gap-4 flex-wrap">
+        <div className="flex-1 max-w-xs">
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            Radius (km)
+          </label>
+          <input
+            type="number"
+            min="0.1"
+            step="0.1"
+            value={radius}
+            onChange={(e) => onRadiusChange(parseFloat(e.target.value))}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+            placeholder="Radius in km"
+          />
+        </div>
+        
+        <div className="flex items-center gap-2 p-4">
+          <button
+            onClick={onToggleTracking}
+            className={`px-4 py-3 rounded-md font-medium text-sm ${
+              trackingEnabled
+                ? 'bg-red-500 text-white hover:bg-red-600'
+                : 'bg-green-500 text-white hover:bg-green-600'
+            }`}
+          >
+            {trackingEnabled ? 'Stop Tracking' : 'Start Tracking'}
+          </button>
+          
+          {trackingEnabled && (
+            <button
+              onClick={onRefresh}
+              className="px-4 py-2 bg-blue-500 text-white rounded-md font-medium text-sm hover:bg-blue-600"
+            >
+              Refresh
+            </button>
+          )}
+        </div>
+        
+        <div className="flex items-center gap-2">
+          <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
+          <span className="text-xs text-gray-600 dark:text-gray-400">
+            {isConnected ? 'Connected' : 'Disconnected'}
+          </span>
+        </div>
+      </div>
+      
+      <div className="text-sm text-gray-500 dark:text-gray-400">
+        <p>💡 Click on the map to set a new base location</p>
+        {lastUpdate && <p>Last update: {lastUpdate}</p>}
+      </div>
+    </div>
+  );
+}
+```
+
+## 9. components/AlertsPanel.tsx - Alerts display component
+```typescript
+import React from 'react';
+import { Alert } from '../types';
+
+interface AlertsPanelProps {
+  alerts: Alert[];
+  onClearAlerts: () => void;
+}
+
+export function AlertsPanel({ alerts, onClearAlerts }: AlertsPanelProps): JSX.Element | null {
+  if (alerts.length === 0) return null;
+
+  return (
+    <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+      <div className="flex justify-between items-center mb-2">
+        <h4 className="font-medium text-red-800 dark:text-red-300">Recent Alerts</h4>
+        <button
+          onClick={onClearAlerts}
+          className="text-sm text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300"
+        >
+          Clear
+        </button>
+      </div>
+      <div className="space-y-2">
+        {alerts.map(alert => (
+          <div key={alert.id} className="text-sm text-red-700 dark:text-red-300">
+            <span className="font-medium">{alert.timestamp}:</span> {alert.message} ({alert.distance} km from base)
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+```
+
+## 10. components/StatsPanel.tsx - Statistics display component
+```typescript
+import React from 'react';
+import { Bike } from '../types';
+
+interface StatsPanelProps {
+  bikes: Bike[];
+  trackingEnabled: boolean;
+}
+
+export function StatsPanel({ bikes, trackingEnabled }: StatsPanelProps): JSX.Element | null {
+  if (!trackingEnabled) return null;
+
+  const bikesInFence = bikes.filter(bike => !bike.isOutsideFence);
+  const bikesOutsideFence = bikes.filter(bike => bike.isOutsideFence);
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+      <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-lg">
+        <h4 className="font-medium text-green-800 dark:text-green-300">Inside Fence</h4>
+        <p className="text-2xl font-bold text-green-600 dark:text-green-400">{bikesInFence.length}</p>
+      </div>
+      <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded-lg">
+        <h4 className="font-medium text-red-800 dark:text-red-300">Outside Fence</h4>
+        <p className="text-2xl font-bold text-red-600 dark:text-red-400">{bikesOutsideFence.length}</p>
+      </div>
+      <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
+        <h4 className="font-medium text-blue-800 dark:text-blue-300">Total Bikes</h4>
+        <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">{bikes.length}</p>
+      </div>
+    </div>
+  );
+}
+```
+
+## 11. GeoFencing.tsx - Main component (Simplified)
+```typescript
+import React, { useState, useCallback } from 'react';
+import { MapContainer, TileLayer, Circle, Marker } from 'react-leaflet';
+import { LatLng } from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+
+import { Location } from './types';
+import { defaultIcon } from './utils/mapIcons';
+import { calculateCircleArea } from './utils/geoCalculations';
+import { useSocket } from './hooks/useSocket';
+import { useBikeTracking } from './hooks/useBikeTracking';
+import { MapClickHandler } from './components/MapClickHandler';
+import { BikeMarker } from './components/BikeMarker';
+import { ControlPanel } from './components/ControlPanel';
+import { AlertsPanel } from './components/AlertsPanel';
+import { StatsPanel } from './components/StatsPanel';
+
+export default function GeoFencing(): JSX.Element {
+  const [baseLocation, setBaseLocation] = useState<Location>({
+    lat: 19.0760,
+    lng: 72.8777
+  });
+  const [radius, setRadius] = useState<number>(1);
+  const [trackingEnabled, setTrackingEnabled] = useState<boolean>(false);
+
+  const { bikes, alerts, handleBikeUpdate, fetchBikes, clearAlerts, resetBikes } = useBikeTracking({
+    baseLocation,
+    radius
+  });
+
+  const { isConnected, lastUpdate } = useSocket({
+    enabled: trackingEnabled,
+    onBikeUpdate: handleBikeUpdate
+  });
+
+  const handleMapClick = useCallback((latlng: LatLng): void => {
+    setBaseLocation({ lat: latlng.lat, lng: latlng.lng });
+  }, []);
+
+  const handleRadiusChange = (value: number): void => {
+    if (value > 0) setRadius(value);
+  };
+
+  const toggleTracking = (): void => {
+    setTrackingEnabled(!trackingEnabled);
+    if (!trackingEnabled) {
+      resetBikes();
+      clearAlerts();
+    }
+  };
+
+  return (
+    <div className="min-h-screen rounded-2xl border border-gray-200 bg-white px-5 py-7 dark:border-gray-800 dark:bg-white/[0.03] xl:px-10 xl:py-12">
+      <div className="mb-8">
+        <h3 className="mb-4 text-center font-semibold text-gray-800 text-2xl dark:text-white/90">
+          Geo Fencing with Live Bike Tracking
+        </h3>
+
+        <ControlPanel
+          radius={radius}
+          onRadiusChange={handleRadiusChange}
+          trackingEnabled={trackingEnabled}
+          onToggleTracking={toggleTracking}
+          onRefresh={fetchBikes}
+          isConnected={isConnected}
+          lastUpdate={lastUpdate}
+        />
+
+        <AlertsPanel alerts={alerts} onClearAlerts={clearAlerts} />
+        <StatsPanel bikes={bikes} trackingEnabled={trackingEnabled} />
+      </div>
+
+      {/* Map */}
+      <div className="h-[600px] rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700">
+        <MapContainer
+          center={[baseLocation.lat, baseLocation.lng]}
+          zoom={13}
+          style={{ height: '100%', width: '100%' }}
+          key={`${baseLocation.lat}-${baseLocation.lng}`}
+        >
+          <TileLayer
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          />
+          
+          <MapClickHandler onMapClick={handleMapClick} />
+          
+          <Marker position={[baseLocation.lat, baseLocation.lng]} icon={defaultIcon} />
+          
+          <Circle
+            center={[baseLocation.lat, baseLocation.lng]}
+            radius={radius * 1000}
+            pathOptions={{
+              color: '#3b82f6',
+              fillColor: '#3b82f6',
+              fillOpacity: 0.1,
+              weight: 2
+            }}
+          />
+
+          {trackingEnabled && bikes.map((bike) => (
+            <BikeMarker key={bike.bikeId} bike={bike} />
+          ))}
+        </MapContainer>
+      </div>
+
+      {/* Info Panel */}
+      <div className="mt-6 p-6 bg-gray-50 dark:bg-gray-800 rounded-lg">
+        <h4 className="font-semibold text-gray-800 dark:text-white mb-2">Geo Fence Info</h4>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+          <div>
+            <span className="text-gray-600 dark:text-gray-400">Base Location:</span>
+            <p className="font-medium text-gray-800 dark:text-white">
+              {baseLocation.lat.toFixed(6)}, {baseLocation.lng.toFixed(6)}
+            </p>
+          </div>
+          <div>
+            <span className="text-gray-600 dark:text-gray-400">Radius:</span>
+            <p className="font-medium text-gray-800 dark:text-white">{radius} km</p>
+          </div>
+          <div>
+            <span className="text-gray-600 dark:text-gray-400">Area:</span>
+            <p className="font-medium text-gray-800 dark:text-white">
+              {calculateCircleArea(radius).toFixed(2)} km²
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+```
+
+# Benefits of this refactoring:
+
+1. **Separation of Concerns**: Each file has a single responsibility
+2. **Reusability**: Components and hooks can be reused
+3. **Maintainability**: Easier to find and fix bugs
+4. **Testing**: Individual components can be tested in isolation
+5. **Performance**: Better tree-shaking and code splitting opportunities
+6. **Readability**: Main component is much cleaner and easier to understand
+
+The main component went from ~400 lines to ~100 lines while maintaining all functionality!

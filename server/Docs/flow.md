@@ -1,0 +1,1 @@
+server.js → src/app.js → src/routes/index.js →individual routes → controllers → services

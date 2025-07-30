@@ -1,0 +1,122 @@
+[
+  {
+    "bikeId": "BIKE001",
+    "data": {
+      "avgSpeed": 13.67,
+      "location": {
+        "lat": 19.07545591142236,
+        "lng": 72.8787797093375
+      },
+      "battery": 70
+    },
+    "timestamp": "2025-07-29T18:12:45.363Z",
+    "serverTimestamp": "2025-07-29T18:12:45.363Z",
+    "receivedAt": 1753812765363,
+    "geofenceStatus": {
+      "isWithinBounds": true,
+      "hasGeofence": false,
+      "status": "NO_GEOFENCE",
+      "distance": 0
+    }
+  },
+  {
+    "bikeId": "BIKE001",
+    "data": {
+      "avgSpeed": 20.68,
+      "location": {
+        "lat": 19.073823611091427,
+        "lng": 72.87890524892191
+      },
+      "battery": 70
+    },
+    "timestamp": "2025-07-29T18:21:44.057Z",
+    "serverTimestamp": "2025-07-29T18:21:44.057Z",
+    "receivedAt": 1753813304057,
+    "geofenceStatus": {
+      "isWithinBounds": true,
+      "hasGeofence": false,
+      "status": "NO_GEOFENCE",
+      "distance": 0
+    }
+  },
+  {
+    "bikeId": "BIKE001",
+    "data": {
+      "avgSpeed": 18.46,
+      "location": {
+        "lat": 19.074802381432573,
+        "lng": 72.8773802357769
+      },
+      "battery": 70
+    },
+    "timestamp": "2025-07-29T18:21:49.068Z",
+    "serverTimestamp": "2025-07-29T18:21:49.068Z",
+    "receivedAt": 1753813309068,
+    "geofenceStatus": {
+      "isWithinBounds": true,
+      "hasGeofence": false,
+      "status": "NO_GEOFENCE",
+      "distance": 0
+    }
+  },
+  {
+    "bikeId": "BIKE001",
+    "data": {
+      "avgSpeed": 27.75,
+      "location": {
+        "lat": 19.077693072836833,
+        "lng": 72.87708296009247
+      },
+      "battery": 70
+    },
+    "timestamp": "2025-07-29T18:21:54.090Z",
+    "serverTimestamp": "2025-07-29T18:21:54.090Z",
+    "receivedAt": 1753813314090,
+    "geofenceStatus": {
+      "isWithinBounds": true,
+      "hasGeofence": false,
+      "status": "NO_GEOFENCE",
+      "distance": 0
+    }
+  },
+  {
+    "bikeId": "BIKE001",
+    "data": {
+      "avgSpeed": 14.9,
+      "location": {
+        "lat": 19.07569540948952,
+        "lng": 72.87855455842384
+      },
+      "battery": 70
+    },
+    "timestamp": "2025-07-29T18:21:59.103Z",
+    "serverTimestamp": "2025-07-29T18:21:59.103Z",
+    "receivedAt": 1753813319103,
+    "geofenceStatus": {
+      "isWithinBounds": true,
+      "hasGeofence": false,
+      "status": "NO_GEOFENCE",
+      "distance": 0
+    }
+  },
+  {
+    "bikeId": "BIKE001",
+    "data": {
+      "avgSpeed": 14.51,
+      "location": {
+        "lat": 19.074734273152675,
+        "lng": 72.87594404729379
+      },
+      "battery": 70
+    },
+    "timestamp": "2025-07-29T18:22:04.110Z",
+    "serverTimestamp": "2025-07-29T18:22:04.110Z",
+    "receivedAt": 1753813324110,
+    "geofenceStatus": {
+      "isWithinBounds": true,
+      "hasGeofence": false,
+      "status": "NO_GEOFENCE",
+      "distance": 0
+    }
+  }
+]
